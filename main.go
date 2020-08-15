@@ -32,7 +32,7 @@ func parseFileInfoFrom(resp *http.Response) string {
 
 //FileDownloader 文件下载器
 type FileDownloader struct {
-	fileSize       int64
+	fileSize       int
 	url            string
 	outputFileName string
 	totalPart      int //下载线程
@@ -110,6 +110,7 @@ func (d *FileDownloader) Run() error {
 	if err != nil {
 		return err
 	}
+	d.fileSize = fileTotalSize
 
 	jobs := make([]filePart, d.totalPart)
 	eachSize := fileTotalSize / d.totalPart
@@ -198,10 +199,15 @@ func (d FileDownloader) mergeFileParts() error {
 	}
 	defer mergedFile.Close()
 	hash := sha256.New()
-
+	totalSize := 0
 	for _, s := range d.doneFilePart {
+
 		mergedFile.Write(s.Data)
 		hash.Write(s.Data)
+		totalSize += len(s.Data)
+	}
+	if totalSize != d.fileSize {
+		return errors.New("文件不完整")
 	}
 	//https://download.jetbrains.com/go/goland-2020.2.2.dmg.sha256?_ga=2.223142619.1968990594.1597453229-1195436307.1493100134
 	if hex.EncodeToString(hash.Sum(nil)) != "3af4660ef22f805008e6773ac25f9edbc17c2014af18019b7374afbed63d4744" {
