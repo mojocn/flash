@@ -69,19 +69,15 @@ type filePart struct {
 }
 
 func main() {
-
 	startTime := time.Now()
-
 	var url string //下载文件的地址
 	url = "https://download.jetbrains.com/go/goland-2020.2.2.dmg"
-
 	downloader := NewFileDownloader(url, "", "", 10)
-
 	if err := downloader.Run(); err != nil {
 		// fmt.Printf("\n%s", err)
 		log.Fatal(err)
 	}
-	fmt.Printf("\n\n ✅ 文件下载完成耗时: %f second\n", time.Now().Sub(startTime).Seconds())
+	fmt.Printf("\n 文件下载完成耗时: %f second\n", time.Now().Sub(startTime).Seconds())
 }
 
 //head 获取要下载的文件的基本信息(header) 使用HTTP Method Head
