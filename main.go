@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -13,11 +14,9 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"errors"
 )
 
-func parseFileName(resp *http.Response) string {
+func parseFileInfoFrom(resp *http.Response) string {
 	contentDisposition := resp.Header.Get("Content-Disposition")
 	if contentDisposition != "" {
 		_, params, err := mime.ParseMediaType(contentDisposition)
@@ -31,11 +30,12 @@ func parseFileName(resp *http.Response) string {
 	return filename
 }
 
+//FileDownloader 文件下载器
 type FileDownloader struct {
 	fileSize       int64
 	url            string
 	outputFileName string
-	totalPart      int
+	totalPart      int //下载线程
 	outputDir      string
 	doneFilePart   []filePart
 }
@@ -43,7 +43,7 @@ type FileDownloader struct {
 //NewFileDownloader .
 func NewFileDownloader(url, outputFileName, outputDir string, totalPart int) *FileDownloader {
 	if outputDir == "" {
-		wd, err := os.Getwd()
+		wd, err := os.Getwd() //获取当前工作目录
 		if err != nil {
 			log.Println(err)
 		}
@@ -60,11 +60,12 @@ func NewFileDownloader(url, outputFileName, outputDir string, totalPart int) *Fi
 
 }
 
+//filePart 文件分片
 type filePart struct {
-	Index int
-	From  int
-	To    int
-	Data  []byte
+	Index int    //文件分片的序号
+	From  int    //开始byte
+	To    int    //解决byte
+	Data  []byte //http下载得到的文件内容
 }
 
 func main() {
@@ -80,30 +81,36 @@ func main() {
 		// fmt.Printf("\n%s", err)
 		log.Fatal(err)
 	}
-
 	fmt.Printf("\n\n ✅ 文件下载完成耗时: %f second\n", time.Now().Sub(startTime).Seconds())
 }
 
-func (d *FileDownloader) poke() (int, error) {
+//head 获取要下载的文件的基本信息(header) 使用HTTP Method Head
+func (d *FileDownloader) head() (int, error) {
 	r, err := d.getNewRequest("HEAD")
 	if err != nil {
 		return 0, err
 	}
-
 	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return 0, err
 	}
-
 	if resp.StatusCode > 299 {
 		return 0, errors.New(fmt.Sprintf("Can't process, response is %v", resp.StatusCode))
 	}
-	d.outputFileName = parseFileName(resp)
+	//检查是否支持 断点续传
+	//https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
+	if resp.Header.Get("Accept-Ranges") != "bytes" {
+		return 0, errors.New("服务器不支持文件断点续传")
+	}
 
+	d.outputFileName = parseFileInfoFrom(resp)
+	//https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
 	return strconv.Atoi(resp.Header.Get("Content-Length"))
 }
+
+//Run 开始下载任务
 func (d *FileDownloader) Run() error {
-	fileTotalSize, err := d.poke()
+	fileTotalSize, err := d.head()
 	if err != nil {
 		return err
 	}
@@ -142,6 +149,7 @@ func (d *FileDownloader) Run() error {
 	return d.mergeFileParts()
 }
 
+//下载分片
 func (d FileDownloader) downloadPart(c filePart) error {
 	r, err := d.getNewRequest("GET")
 	if err != nil {
@@ -184,6 +192,7 @@ func (d FileDownloader) getNewRequest(method string) (*http.Request, error) {
 	return r, nil
 }
 
+//mergeFileParts 合并下载的文件
 func (d FileDownloader) mergeFileParts() error {
 	log.Println("开始合并文件")
 	path := filepath.Join(d.outputDir, d.outputFileName)
