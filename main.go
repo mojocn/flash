@@ -64,7 +64,7 @@ func NewFileDownloader(url, outputFileName, outputDir string, totalPart int) *Fi
 type filePart struct {
 	Index int    //文件分片的序号
 	From  int    //开始byte
-	To    int    //解决byte
+	To    int    //结束byte
 	Data  []byte //http下载得到的文件内容
 }
 
